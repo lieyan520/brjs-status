@@ -64,9 +64,9 @@
     var d = new Date(ts);
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
   }
-  function relTime(ts) {
+  function relTime(ts, now) {
     if (!ts) return '尚未更新';
-    var d = Date.now() - ts;
+    var d = (now || Date.now()) - ts;
     if (d < 0) d = 0;
     var s = Math.floor(d / 1000);
     if (s < 5) return '刚刚';
@@ -129,6 +129,8 @@
     listSig: '',
     dbError: null,
     dbStale: false,
+    sharedStatus: false,      // 状态是否来自数据库（全站共享）
+    serverOffset: 0,          // 数据库时间 - 本机时间，用于消除访客时钟误差
     editingId: null,
     booted: false,
   };
@@ -159,6 +161,28 @@
     return t;
   }
   function trackingRead(id) { return state.tracking[id] || EMPTY_TRACK; }
+
+  /* ---------------- 数据来自数据库（全站共享）时的辅助函数 ---------------- */
+  function isCloud() { return Store.mode() === 'cloud'; }
+  /** true = 状态与空服时长由数据库统计，所有人看到同一个数字 */
+  function sharedMode() { return isCloud() && state.sharedStatus; }
+  /** 校正过本地时钟误差的“现在”（用数据库时间对齐，保证每个人算出的秒数一致） */
+  function nowMs() { return Date.now() + (state.serverOffset || 0); }
+
+  /** 取某个服务器的空服计时数据：共享模式读数据库，否则读本机 localStorage */
+  function trackingOf(server) {
+    if (sharedMode()) {
+      return {
+        zeroSince: server.zeroSince || null,
+        lastPlayersAt: server.lastPlayersAt || null,
+        longestMs: server.longestZeroMs || 0,
+        longestStart: null,
+        lastZeroMs: server.lastZeroMs || 0,
+        shared: true,
+      };
+    }
+    return trackingRead(server.id);
+  }
   function saveTracking() { saveJson(KEYS.track, state.tracking); }
   function visibleServers() { return state.servers.filter(function (s) { return s.enabled !== false; }); }
   function canEdit() {
@@ -283,7 +307,7 @@
     var lines = [];
     if (st) {
       lines.push(st.version ? ('版本 ' + st.version) : (st.online ? '版本未知' : '未响应查询'));
-      lines.push((st.provider || '') + (rt.latency ? (' · ' + rt.latency + 'ms') : ''));
+      lines.push((st.provider || '') + (rt.latency ? (' · ' + rt.latency + 'ms') : (st.shared ? ' · 数据库统计' : '')));
       if (st.motd && st.motd !== '-') lines.push(truncate(st.motd, 46));
     } else {
       lines.push(rt.error ? '查询失败' : '正在查询…');
@@ -311,7 +335,7 @@
     if (!c) return;
     var r = c.refs;
     var rt = getRt(server.id);
-    var t = trackingRead(server.id);
+    var t = trackingOf(server);
     var kind = kindOf(rt);
     // 离线 + 关闭「离线计入」时，即使计时器还在跑也不显示（并把它结算掉）
     var offlineNotCounted = (kind === 'offline') && !state.settings.countOffline;
@@ -331,24 +355,25 @@
     if (counting) {
       subs.push('开始于 ' + fmtClock(t.zeroSince));
       subs.push('≈ ' + fmtHuman(now - t.zeroSince));
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt));
+      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
     } else if (kind === 'online') {
       subs.push('当前 ' + (rt.status ? rt.status.playersOnline : 0) + ' 人在线');
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt));
+      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
       if (t.lastZeroMs) subs.push('上次空服 ' + fmtDHMS(t.lastZeroMs));
     } else if (kind === 'offline') {
       subs.push('服务器当前离线');
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt));
+      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
     } else if (kind === 'error') {
       subs.push(rt.error ? truncate(rt.error, 60) : '查询失败，稍后自动重试');
     } else {
-      subs.push('首次查询中…');
+      subs.push(sharedMode() ? '等待数据库首次查询…' : '首次查询中…');
     }
     var longest = Math.max(t.longestMs || 0, counting ? now - t.zeroSince : 0);
     if (longest > 0) subs.push('最长空服记录 ' + fmtDHMS(longest));
+    if (sharedMode()) subs.push('全站统一计时');
     r.zerosub.textContent = subs.join(' · ');
 
-    var kv = ['最近更新 ' + relTime(rt.fetchedAt)];
+    var kv = ['最近更新 ' + relTime(rt.fetchedAt, now)];
     if (rt.error && rt.status) kv.push('⚠ 本次查询失败，显示上次数据');
     if (server.note) kv.push(server.note);
     r.kv.textContent = kv.join(' · ');
@@ -415,7 +440,7 @@
     $('#statPlayers').textContent = String(players);
     $('#statEmpty').textContent = String(empty);
     $('#statPlayersHint').textContent = failed ? (failed + ' 个服务器查询失败') : '全部服务器合计';
-    $('#statUpdated').textContent = state.lastUpdatedAt ? ('更新于 ' + relTime(state.lastUpdatedAt)) : '尚未更新';
+    $('#statUpdated').textContent = updatedHint(nowMs());
   }
 
   function updateDbPill() {
@@ -442,6 +467,7 @@
 
   /* ============================ 状态轮询 ============================ */
   function runStatus(servers) {
+    if (sharedMode()) return refreshList({ silent: true });   // 云端共享：状态由数据库定时刷新
     var list = (servers || visibleServers()).filter(function (s) { return s.enabled !== false && s.address; });
     if (!list.length) return Promise.resolve();
     if (state.refreshing) {
@@ -533,6 +559,8 @@
     return Store.list().then(function (res) {
       state.dbError = res.error || null;
       state.dbStale = !!res.stale;
+      state.sharedStatus = !!res.shared;
+      if (res.serverNow) state.serverOffset = res.serverNow - Date.now();
       applyServers(res.items || []);
       updateDbPill();
       if (res.error && !opts.silent) {
@@ -550,11 +578,20 @@
     var prev = {};
     state.servers.forEach(function (s) { prev[s.id] = s; });
 
+    var shared = sharedMode();
     var changed = [];
     items.forEach(function (s) {
       var p = prev[s.id];
       var rt = getRt(s.id);
-      if (!p || p.address !== s.address) {
+      if (shared) {
+        // 状态直接来自数据库，浏览器不再自己查询
+        rt.status = s.status || null;
+        rt.error = s.statusError || null;
+        rt.fetchedAt = s.checkedAt || 0;
+        rt.latency = 0;
+        rt.loading = false;
+        rt.shared = true;
+      } else if (!p || p.address !== s.address) {
         rt.status = null; rt.error = null; rt.fetchedAt = 0; rt.latency = 0;
         changed.push(s);
       }
@@ -580,31 +617,52 @@
     }
     updateEmptyState();
     updateSummary();
-    if (changed.length) runStatus(changed);
+    if (changed.length && !shared) runStatus(changed);
   }
 
   /* ============================ 每秒调度 ============================ */
   function tick() {
-    var now = Date.now();
+    var wall = Date.now();
+    var shown = nowMs();
     if (!document.hidden) {
-      if (now >= state.nextStatusAt && !state.refreshing) {
-        var list = visibleServers().filter(function (s) { return s.address; });
-        if (list.length) {
-          state.nextStatusAt = now + state.settings.statusSeconds * 1000;
-          runStatus(list);
-        } else {
-          state.nextStatusAt = now + 1000;   // 还没有服务器，1 秒后再看
+      if (sharedMode()) {
+        // 云端共享模式：状态和计时都在数据库里，浏览器只需要定时重新读一次
+        if (wall >= state.nextListAt && !state.loadingList) {
+          state.nextListAt = wall + state.settings.listSeconds * 1000;
+          refreshList({ silent: true });
+        }
+      } else {
+        if (wall >= state.nextStatusAt && !state.refreshing) {
+          var list = visibleServers().filter(function (s) { return s.address; });
+          if (list.length) {
+            state.nextStatusAt = wall + state.settings.statusSeconds * 1000;
+            runStatus(list);
+          } else {
+            state.nextStatusAt = wall + 1000;   // 还没有服务器，1 秒后再看
+          }
+        }
+        if (wall >= state.nextListAt && !state.loadingList) {
+          state.nextListAt = wall + state.settings.listSeconds * 1000;
+          refreshList({ silent: true });
         }
       }
-      if (now >= state.nextListAt && !state.loadingList) {
-        state.nextListAt = now + state.settings.listSeconds * 1000;
-        refreshList({ silent: true });
-      }
     }
-    var left = Math.max(0, Math.ceil((state.nextStatusAt - now) / 1000));
-    $('#statCountdown').textContent = String(left);
-    $('#statUpdated').textContent = state.lastUpdatedAt ? ('更新于 ' + relTime(state.lastUpdatedAt)) : '尚未更新';
-    state.servers.forEach(function (s) { paintTimer(s, now); });
+    var nextAt = sharedMode() ? state.nextListAt : state.nextStatusAt;
+    $('#statCountdown').textContent = String(Math.max(0, Math.ceil((nextAt - wall) / 1000)));
+    $('#statUpdated').textContent = updatedHint(shown);
+    state.servers.forEach(function (s) { paintTimer(s, shown); });
+  }
+
+  /** 顶部「自动刷新 / 数据库更新于」文案 */
+  function updatedHint(shown) {
+    if (sharedMode()) {
+      var newest = 0;
+      visibleServers().forEach(function (s) { if (s.checkedAt && s.checkedAt > newest) newest = s.checkedAt; });
+      if (!newest) return '等待数据库首次查询';
+      var lag = shown - newest;
+      return '数据库更新于 ' + relTime(newest, shown) + (lag > 300000 ? ' · ⚠ 自动查询可能已停止' : '');
+    }
+    return state.lastUpdatedAt ? ('更新于 ' + relTime(state.lastUpdatedAt)) : '尚未更新';
   }
 
   /* ============================ 管理端 ============================ */
@@ -632,9 +690,17 @@
     $('#cfgKey').value = cfg.anonKey || '';
 
     if (isCloud) {
-      $('#dbDesc').textContent = state.dbError
-        ? ('云端读取异常：' + state.dbError)
-        : ('已连接：' + cfg.url + '（数据表 ' + cfg.table + '）' + (state.dbStale ? ' · 当前显示的是本地缓存' : ''));
+      if (state.dbError) {
+        $('#dbDesc').textContent = '云端读取异常：' + state.dbError;
+      } else if (state.sharedStatus) {
+        $('#dbDesc').textContent = '已连接：' + cfg.url + '（数据表 ' + cfg.table + '）· 在线人数和空服时长由数据库统一统计，'
+          + '每分钟自动查询一次，所有访客看到的是同一个数字（没人在看网页时也在继续统计）。';
+      } else {
+        $('#dbDesc').textContent = '已连接：' + cfg.url + '（数据表 ' + cfg.table + '）· 但还没执行 supabase/status.sql，'
+          + '目前是「每个访客各自查询」，不同人看到的空服时长可能不一样。执行后即可全站统一。';
+      }
+      $('#btnPollNow').classList.toggle('hidden', !(state.sharedStatus && canEdit()));
+      $('#fieldStatusPoll').classList.toggle('hidden', !!state.sharedStatus);
       $('#loginState').textContent = user ? ('已登录：' + (user.email || '管理员')) : '未登录（只能查看，不能修改）';
       $('#btnLogout').classList.toggle('hidden', !user);
       $('#btnLogin').classList.toggle('hidden', !!user);
@@ -642,7 +708,7 @@
       $('#loginPassword').parentNode.classList.toggle('hidden', !!user);
       $('#formHint').textContent = user ? '' : '登录后即可添加 / 修改服务器';
     } else {
-      $('#dbDesc').textContent = '本地模式：服务器列表只保存在这个浏览器里，其他访客看不到。按下面的步骤接入 Supabase 后，所有人共享同一份列表。';
+      $('#dbDesc').textContent = '本地模式：服务器列表和空服时长都只保存在这个浏览器里，其他访客看不到。按下面的步骤接入 Supabase 后，所有人共享同一份数据和同一个计时。';
     }
     renderAdminList();
   }
@@ -879,11 +945,39 @@
   }
 
   function resetTimers() {
+    if (sharedMode()) {
+      if (!canEdit()) { toast('请先登录管理员账号', 'warn'); return; }
+      if (!global.confirm('确定重置全站的空服计时吗？\n（所有服务器从 0 重新开始，所有访客都会看到归零）')) return;
+      Store.resetZero().then(function () {
+        toast('已重置全站空服计时');
+        return refreshList();
+      }).catch(function (err) { toast('重置失败：' + (err.message || err), 'err', 6000); });
+      return;
+    }
     if (!global.confirm('确定重置所有服务器的空服计时吗？\n（当前正在统计的时长会从 0 重新开始）')) return;
     state.tracking = {};
     saveTracking();
-    state.servers.forEach(function (s) { paintTimer(s, Date.now()); });
+    state.servers.forEach(function (s) { paintTimer(s, nowMs()); });
     toast('空服计时已重置');
+  }
+
+  /** 管理员：让数据库立刻查一次（正常情况每分钟自动查，这里用于手动催一下） */
+  function pollNow() {
+    if (!canEdit()) { toast('请先登录管理员账号', 'warn'); return; }
+    if (!isCloud()) { toast('本地模式下浏览器自己查询，无需此操作'); return; }
+    var btn = $('#btnPollNow');
+    btn.disabled = true;
+    toast('已通知数据库查询，约 5~20 秒后更新…');
+    Store.pollNow().then(function () {
+      return new Promise(function (r) { setTimeout(r, 5000); });
+    }).then(function () {
+      return refreshList({ silent: true });
+    }).then(function () {
+      toast('已刷新');
+      state.nextListAt = 0;
+    }).catch(function (err) {
+      toast('操作失败：' + (err.message || err), 'err', 6000);
+    }).then(function () { btn.disabled = false; });
   }
 
   var SQL_FALLBACK = [
@@ -909,6 +1003,13 @@
       .then(function (r) { return r.ok ? r.text() : SQL_FALLBACK; })
       .catch(function () { return SQL_FALLBACK; })
       .then(function (sql) { copyText(sql, '建表 SQL（粘贴到 Supabase 的 SQL Editor 执行）'); });
+  }
+
+  function copySql2() {
+    fetch('supabase/status.sql', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (sql) { copyText(sql, '共享状态 SQL（让全站空服时长统一，粘贴到 SQL Editor 执行）'); })
+      .catch(function () { toast('读取失败，请手动打开仓库里的 supabase/status.sql 复制内容', 'err', 6000); });
   }
 
   function saveDbConfig() {
@@ -958,6 +1059,8 @@
       }
     });
     $('#btnCopySql').addEventListener('click', copySql);
+    $('#btnCopySql2').addEventListener('click', copySql2);
+    $('#btnPollNow').addEventListener('click', pollNow);
     $('#btnSaveCfg').addEventListener('click', saveDbConfig);
     $('#btnClearCfg').addEventListener('click', function () {
       Store.clearDbConfig();

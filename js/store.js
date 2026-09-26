@@ -35,7 +35,8 @@
     var url = String(over.url || base.url || '').trim().replace(/\/+$/, '');
     var key = String(over.anonKey || base.anonKey || '').trim();
     var table = String(base.table || 'servers').trim().replace(/[^a-zA-Z0-9_]/g, '') || 'servers';
-    return { url: url, anonKey: key, table: table };
+    var liveView = String(base.liveView || (table + '_live')).trim().replace(/[^a-zA-Z0-9_]/g, '') || (table + '_live');
+    return { url: url, anonKey: key, table: table, liveView: liveView };
   }
   function isCloud() {
     var c = dbConfig();
@@ -162,6 +163,53 @@
     });
   }
 
+  /** 解析数据库时间戳（Postgres 给的是带微秒的 ISO 字符串） */
+  function parseTs(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return v;
+    var t = Date.parse(String(v).replace(/(\.\d{3})\d+/, '$1'));
+    return isFinite(t) ? t : null;
+  }
+
+  function toNames(v) {
+    var arr = Array.isArray(v) ? v : [];
+    return arr.map(function (p) {
+      if (typeof p === 'string') return p;
+      if (!p) return '';
+      return p.name_clean || p.name || p.name_raw || '';
+    }).filter(Boolean);
+  }
+
+  /**
+   * 把「服务器 + 全局状态」视图的一行，整理成前端直接可用的对象。
+   * 空服时长（zero_since / longest_zero_ms …）来自数据库，所有人共享同一个值。
+   */
+  function normalizeLiveRow(row, index) {
+    var item = normalizeRow(row, index);
+    item.zeroSince = parseTs(row.zero_since);
+    item.lastPlayersAt = parseTs(row.last_players_at);
+    item.longestZeroMs = Number(row.longest_zero_ms) || 0;
+    item.lastZeroMs = Number(row.last_zero_ms) || 0;
+    item.checkedAt = parseTs(row.checked_at);
+    item.statusError = row.status_error || null;
+    item.provider = row.provider || '';
+    if (row.online === null || row.online === undefined) {
+      item.status = null;                       // 还没查到过
+    } else {
+      item.status = {
+        online: !!row.online,
+        playersOnline: Number(row.players_online) || 0,
+        playersMax: Number(row.players_max) || 0,
+        version: row.version || '',
+        motd: row.motd || '',
+        playerNames: toNames(row.player_names),
+        provider: row.provider || '',
+        shared: true,                           // 标记：来自数据库，全站一致
+      };
+    }
+    return item;
+  }
+
   /* ---------------- local 模式 ---------------- */
   function seedLocal(force) {
     var existing = lsGet(KEYS.servers, null);
@@ -184,29 +232,57 @@
 
   /* ---------------- 对外接口 ---------------- */
 
-  /** 读取服务器列表 -> {items, stale, error} */
+  /**
+   * 读取服务器列表（云端模式下读的是 servers_live 视图：
+   * 一次请求同时拿到「服务器信息 + 数据库统计出来的状态和空服时长」）
+   * -> {items, serverNow, shared, stale, error, mode}
+   */
   function list() {
     if (!isCloud()) {
-      return Promise.resolve({ items: sortRows(localRows()), stale: false, error: null, mode: 'local' });
+      return Promise.resolve({ items: sortRows(localRows()), serverNow: null, shared: false, stale: false, error: null, mode: 'local' });
     }
     var cfg = dbConfig();
-    var q = '/rest/v1/' + cfg.table + '?select=*&order=sort_order.asc.nullslast,created_at.asc';
-    return sbRequest(q).then(function (rows) {
+    var order = '&order=sort_order.asc.nullslast,created_at.asc';
+
+    return sbRequest('/rest/v1/' + cfg.liveView + '?select=*' + order).then(function (rows) {
       if (!Array.isArray(rows)) throw new Error('数据表返回格式异常');
-      var items = sortRows(rows.map(normalizeRow));
-      lsSet(KEYS.cache, { at: Date.now(), items: items });
-      return { items: items, stale: false, error: null, mode: 'cloud' };
-    }, function (err) {
+      var serverNow = rows.length ? parseTs(rows[0].server_now) : null;
+      var items = sortRows(rows.map(normalizeLiveRow));
+      lsSet(KEYS.cache, { at: Date.now(), items: items, serverNow: serverNow, live: true });
+      return { items: items, serverNow: serverNow, shared: true, stale: false, error: null, mode: 'cloud' };
+    }).catch(function (err) {
+      var msg = err.message || '';
+      // 视图不存在（还没执行 supabase/status.sql）→ 退回只读服务器列表，
+      // 人数改回由浏览器自己查（老行为），站点不会白屏
+      if (/不存在|does not exist|schema cache|Could not find the table|404/i.test(msg)) {
+        return sbRequest('/rest/v1/' + cfg.table + '?select=*' + order).then(function (rows) {
+          var items = sortRows(rows.map(normalizeRow));
+          lsSet(KEYS.cache, { at: Date.now(), items: items, live: false });
+          return { items: items, serverNow: null, shared: false, stale: false, error: null, mode: 'cloud' };
+        });
+      }
       var cached = lsGet(KEYS.cache, null);
       if (cached && Array.isArray(cached.items)) {
         return {
-          items: sortRows(cached.items.map(normalizeRow)),
-          stale: true, error: err.message, mode: 'cloud',
-          cachedAt: cached.at || null,
+          items: sortRows(cached.items), serverNow: cached.serverNow || null,
+          shared: !!cached.live, stale: true, error: msg, mode: 'cloud', cachedAt: cached.at || null,
         };
       }
-      return { items: [], stale: false, error: err.message, mode: 'cloud' };
+      return { items: [], serverNow: null, shared: false, stale: false, error: msg, mode: 'cloud' };
     });
+  }
+
+  /** 管理员：让数据库立刻查一次所有服务器（结果 1~20 秒内落库） */
+  function pollNow() {
+    if (!isCloud()) return Promise.reject(new Error('尚未接入 Supabase'));
+    return sbRequest('/rest/v1/rpc/poll_now', { method: 'POST', body: {}, auth: true });
+  }
+
+  /** 管理员：重置空服计时（不传 id = 重置全部） */
+  function resetZero(serverId) {
+    if (!isCloud()) return Promise.reject(new Error('尚未接入 Supabase'));
+    var body = serverId ? { p_server_id: serverId } : {};
+    return sbRequest('/rest/v1/rpc/reset_zero', { method: 'POST', body: body, auth: true });
   }
 
   /** 新增服务器 */
@@ -340,6 +416,9 @@
     remove: remove,
     replaceLocal: replaceLocal,
     resetLocal: resetLocal,
+    pollNow: pollNow,
+    resetZero: resetZero,
+    parseTs: parseTs,
     signIn: signIn,
     signOut: signOut,
     currentUser: currentUser,

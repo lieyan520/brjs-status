@@ -97,6 +97,7 @@
         <div class="row gap">
           <button type="button" class="btn btn-sm" id="btnShowSetup">Supabase 接入步骤</button>
           <button type="button" class="btn btn-sm" id="btnTestDb">测试连接</button>
+          <button type="button" class="btn btn-sm hidden" id="btnPollNow">立即查询一次</button>
         </div>
       </section>
 
@@ -105,13 +106,15 @@
         <h3>接入 Supabase 免费数据库（3 步）</h3>
         <ol class="steps">
           <li>打开 <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a> 注册并新建项目（免费版即可）。</li>
-          <li>左侧 <b>SQL Editor</b> → 新建查询 → 粘贴下面的建表语句并点 <b>Run</b>。</li>
+          <li>左侧 <b>SQL Editor</b> → 新建查询 → 粘贴 <b>建表 SQL</b> 并点 <b>Run</b>。</li>
+          <li>再新建一个查询 → 粘贴 <b>共享状态 SQL</b> 并点 <b>Run</b>（让数据库每分钟自己去查人数，全站所有人看到同一个空服时长）。</li>
           <li>左侧 <b>Project Settings → API</b> 复制 <b>Project URL</b> 与 <b>anon public key</b>，填到下面的输入框（或写进仓库的 <code>js/config.js</code>，这样所有访客都能连上）。</li>
         </ol>
         <div class="row gap">
           <button type="button" class="btn btn-sm" id="btnCopySql">复制建表 SQL</button>
-          <span class="muted small">再在 <b>Authentication → Users</b> 里新建一个管理员邮箱密码，并用它登录即可编辑。</span>
+          <button type="button" class="btn btn-sm" id="btnCopySql2">复制共享状态 SQL</button>
         </div>
+        <p class="muted small gap-top">再在 <b>Authentication → Users</b> 里新建一个管理员邮箱密码，并用它登录即可编辑。</p>
         <div class="form-grid gap-top">
           <label class="field">
             <span>Project URL</span>
@@ -194,7 +197,7 @@
       <section class="panel">
         <h3>显示设置（仅本机生效）</h3>
         <div class="form-grid">
-          <label class="field">
+          <label class="field" id="fieldStatusPoll">
             <span>玩家数据刷新间隔</span>
             <select id="setPoll">
               <option value="30">30 秒</option>
@@ -204,7 +207,7 @@
             </select>
           </label>
           <label class="field">
-            <span>服务器列表同步间隔</span>
+            <span>页面读取数据的间隔</span>
             <select id="setListPoll">
               <option value="15">15 秒</option>
               <option value="30">30 秒</option>
