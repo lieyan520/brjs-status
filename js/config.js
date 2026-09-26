@@ -1,4 +1,4 @@
-﻿/* =========================================================================
+/* =========================================================================
  * BRJS公益服务器 · 监控站配置文件
  * 改完这个文件后提交到 GitHub，GitHub Pages 会自动重新部署。
  * ========================================================================= */
@@ -9,7 +9,7 @@ window.BRJS_CONFIG = {
     title: 'BRJS公益服务器',
     subtitle: 'Java 版服务器实时在线人数监控',
     footerTitle: 'BRJS公益服务器',
-    githubUrl: '',        // 例如 https://github.com/你的用户名/仓库名 ，留空则不显示
+    githubUrl: 'https://github.com/lieyan520/brjs-status',   // 页脚显示的仓库链接，留空则不显示
   },
 
   /* ---------------- 2. Supabase 云数据库 ----------------
@@ -17,8 +17,8 @@ window.BRJS_CONFIG = {
    * 填好下面两项即可生效；详细步骤见 README.md 或页面「管理 → Supabase 接入步骤」。
    */
   supabase: {
-    url: '',              // ← Supabase 的 Project URL，例如 https://abcdefghijkl.supabase.co
-    anonKey: '',          // ← Supabase 的 anon public key（或 sb_publishable_... 开头的 key）
+    url: 'https://sklxftvplszxxhrjkpkf.supabase.co',   // ← Supabase 的 Project URL
+    anonKey: 'sb_publishable_YVqaMUcKltEzhj3ZtGBlUQ_jkyehwf3',  // ← 公开密钥（可安全放在前端，写入权限由登录 + RLS 控制）
     table: 'servers',     // 数据表名，用建表 SQL 默认的 servers 即可
   },
 
