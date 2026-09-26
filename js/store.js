@@ -181,6 +181,38 @@
   }
 
   /**
+   * 判断是不是「没有真实身份的占位玩家」。
+   * 有些服务器会在 status 的玩家列表里塞空名字 + 全零 UUID 的条目（游戏里显示为 Anonymous Player），
+   * 这种不该当成一个真人显示出来。
+   */
+  var PLACEHOLDER_NAMES = { 'anonymous player': 1, 'anonymous': 1, 'unknown': 1, '未知玩家': 1, '匿名玩家': 1 };
+  function isPlaceholderPlayer(p) {
+    var name = typeof p === 'string' ? p : (p && (p.name_clean || p.name || p.name_raw)) || '';
+    name = String(name).trim();
+    if (!name) return true;
+    if (PLACEHOLDER_NAMES[name.toLowerCase()]) return true;
+    var uuid = (p && typeof p === 'object' && (p.uuid || p.id)) || '';
+    var hex = String(uuid).replace(/[^0-9a-fA-F]/g, '');
+    if (hex && /^0+$/.test(hex)) return true;      // 全零 UUID = 没有真实身份
+    return false;
+  }
+
+  /** 拆成「真实玩家名单」+「被过滤掉的占位条目数」 */
+  function splitPlayers(value) {
+    var arr = Array.isArray(value) ? value : [];
+    var names = [];
+    var hidden = 0;
+    arr.forEach(function (p) {
+      var name = typeof p === 'string' ? p : (p && (p.name_clean || p.name || p.name_raw)) || '';
+      name = String(name).trim();
+      if (!name) return;
+      if (isPlaceholderPlayer(p)) { hidden++; return; }
+      if (names.indexOf(name) < 0) names.push(name);
+    });
+    return { names: names, hidden: hidden };
+  }
+
+  /**
    * 把「服务器 + 全局状态」视图的一行，整理成前端直接可用的对象。
    * 空服时长（zero_since / longest_zero_ms …）来自数据库，所有人共享同一个值。
    */
@@ -196,13 +228,15 @@
     if (row.online === null || row.online === undefined) {
       item.status = null;                       // 还没查到过
     } else {
+      var players = splitPlayers(row.player_names);
       item.status = {
         online: !!row.online,
         playersOnline: Number(row.players_online) || 0,
         playersMax: Number(row.players_max) || 0,
         version: row.version || '',
         motd: row.motd || '',
-        playerNames: toNames(row.player_names),
+        playerNames: players.names,
+        hiddenPlayers: players.hidden,
         provider: row.provider || '',
         shared: true,                           // 标记：来自数据库，全站一致
       };

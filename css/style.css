@@ -228,6 +228,7 @@ main{max-width:1560px;margin:0 auto;padding:18px 22px 30px}
   font-family:var(--mono);font-size:11.5px;color:var(--text-dim);
   background:var(--panel-2);border:1px solid var(--line-soft);border-radius:6px;padding:2px 7px;
 }
+.player-names span.ghost{color:var(--text-mute);border-style:dashed;background:transparent}
 
 /* 空服计时区 */
 .zero{

@@ -266,12 +266,14 @@
       r.meta.textContent = '';
     }
 
-    // 玩家名单
+    // 玩家名单（服务器塞的空名字/全零 UUID 占位条目会被过滤掉，只报个数）
     var names = st && st.online && st.playerNames ? st.playerNames : [];
-    if (state.settings.showPlayers && names.length) {
+    var ghosts = st && st.online ? (st.hiddenPlayers || 0) : 0;
+    if (state.settings.showPlayers && (names.length || ghosts)) {
       r.names.classList.remove('hidden');
       r.names.textContent = '';
       names.forEach(function (n) { r.names.appendChild(el('span', null, n)); });
+      if (ghosts) r.names.appendChild(el('span', 'ghost', '另有 ' + ghosts + ' 名未具名玩家'));
     } else {
       r.names.classList.add('hidden');
       r.names.textContent = '';
