@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRJS公益服务器 · Java 服务器在线人数监控</title>
+<meta name="description" content="BRJS公益服务器 —— Java 版服务器实时在线人数监控，以及每个服务器“0 人在线”持续时长（D:H:M:S）统计。">
+<meta name="theme-color" content="#0d1117">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233fb950'/%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%230d1117'/%3E%3Crect x='11' y='11' width='10' height='10' rx='2' fill='%233fb950'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true"></div>
+    <div class="brand-text">
+      <h1 id="siteTitle">BRJS公益服务器</h1>
+      <p id="siteSubtitle">Java 版服务器实时在线人数监控</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span class="pill" id="dbPill" title="数据源状态">连接中…</span>
+    <button type="button" class="btn btn-ghost" id="btnRefresh" title="立即刷新所有服务器">⟳ 刷新</button>
+    <button type="button" class="btn" id="btnAdmin">管理</button>
+  </div>
+</header>
+
+<section class="summary" aria-label="总览">
+  <div class="stat">
+    <span class="stat-label">服务器</span>
+    <span class="stat-value"><b id="statOnline">0</b><i>/</i><span id="statTotal">0</span></span>
+    <span class="stat-hint">在线 / 总数</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">总在线人数</span>
+    <span class="stat-value accent"><b id="statPlayers">0</b></span>
+    <span class="stat-hint" id="statPlayersHint">全部服务器合计</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">空服中</span>
+    <span class="stat-value warn"><b id="statEmpty">0</b></span>
+    <span class="stat-hint">当前 0 人在线</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">自动刷新</span>
+    <span class="stat-value mono"><b id="statCountdown">--</b><i>s</i></span>
+    <span class="stat-hint" id="statUpdated">尚未更新</span>
+  </div>
+</section>
+
+<div class="banner hidden" id="setupBanner">
+  <div class="banner-icon">!</div>
+  <div class="banner-text">
+    <b id="bannerTitle">当前为「本地模式」</b>
+    <span id="bannerDesc">添加的服务器只保存在你自己的浏览器里，其他访客看不到。接入 Supabase 免费数据库后，所有人看到同一份服务器列表。</span>
+  </div>
+  <button type="button" class="btn btn-sm" id="bannerAction">查看接入步骤</button>
+  <button type="button" class="icon-btn" id="bannerClose" title="关闭">✕</button>
+</div>
+
+<main>
+  <div class="grid" id="grid"></div>
+
+  <div class="empty hidden" id="emptyState">
+    <div class="empty-block" aria-hidden="true"></div>
+    <h2 id="emptyTitle">还没有添加任何服务器</h2>
+    <p id="emptyDesc">点右上角「管理」添加 Java 版服务器（填 IP 或 IP:端口），可以自定义显示名称，支持 1服 / 2服 / 3服 多个服务器同时监控。</p>
+    <button type="button" class="btn btn-primary" id="emptyAction">+ 添加服务器</button>
+  </div>
+</main>
+
+<footer class="footer">
+  <p>
+    <b id="footerTitle">BRJS公益服务器</b> · 玩家数据来自公共 Minecraft 状态接口（mcstatus.io / mcsrvstat.us），有 30~90 秒缓存，仅供参考。
+  </p>
+  <p class="muted">
+    「空服时长」= 该服务器连续 0 人在线的时长，格式为 D:H:M:S（天:时:分:秒），刷新间隔内以本机时间计算。
+    <a href="#" id="footerLink" class="hidden" target="_blank" rel="noopener">GitHub 仓库</a>
+  </p>
+</footer>
+
+<!-- ===================== 管理 / 设置 弹窗 ===================== -->
+<div class="modal hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="modalTitle">管理</h2>
+      <button type="button" class="icon-btn" id="modalClose" title="关闭">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 数据源状态 -->
+      <section class="panel">
+        <h3>数据源</h3>
+        <p class="panel-desc" id="dbDesc">检查中…</p>
+        <div class="row gap">
+          <button type="button" class="btn btn-sm" id="btnShowSetup">Supabase 接入步骤</button>
+          <button type="button" class="btn btn-sm" id="btnTestDb">测试连接</button>
+        </div>
+      </section>
+
+      <!-- Supabase 接入步骤 -->
+      <section class="panel hidden" id="panelSetup">
+        <h3>接入 Supabase 免费数据库（3 步）</h3>
+        <ol class="steps">
+          <li>打开 <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a> 注册并新建项目（免费版即可）。</li>
+          <li>左侧 <b>SQL Editor</b> → 新建查询 → 粘贴下面的建表语句并点 <b>Run</b>。</li>
+          <li>左侧 <b>Project Settings → API</b> 复制 <b>Project URL</b> 与 <b>anon public key</b>，填到下面的输入框（或写进仓库的 <code>js/config.js</code>，这样所有访客都能连上）。</li>
+        </ol>
+        <div class="row gap">
+          <button type="button" class="btn btn-sm" id="btnCopySql">复制建表 SQL</button>
+          <span class="muted small">再在 <b>Authentication → Users</b> 里新建一个管理员邮箱密码，并用它登录即可编辑。</span>
+        </div>
+        <div class="form-grid gap-top">
+          <label class="field">
+            <span>Project URL</span>
+            <input type="text" id="cfgUrl" placeholder="https://xxxxxxxx.supabase.co" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>anon public key</span>
+            <input type="text" id="cfgKey" placeholder="eyJhbGciOi... 或 sb_publishable_..." autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="row gap">
+          <button type="button" class="btn btn-primary btn-sm" id="btnSaveCfg">保存并连接</button>
+          <button type="button" class="btn btn-sm" id="btnClearCfg">清除本机配置</button>
+        </div>
+        <p class="muted small">
+          注意：anon public key 是公开密钥，可以安全地放进网页；真正的写入权限由登录账号 + 数据库策略控制。
+          为了让 <b>所有访客</b> 都能看到服务器列表，请把这两个值写进 <code>js/config.js</code> 后提交到 GitHub。
+        </p>
+      </section>
+
+      <!-- 登录 -->
+      <section class="panel hidden" id="panelLogin">
+        <h3>管理员登录</h3>
+        <p class="panel-desc" id="loginDesc">用 Supabase 里创建的管理员邮箱 + 密码登录，登录后即可添加 / 修改 / 删除服务器。</p>
+        <div class="form-grid">
+          <label class="field">
+            <span>邮箱</span>
+            <input type="email" id="loginEmail" placeholder="admin@example.com" autocomplete="username">
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+          </label>
+        </div>
+        <div class="row gap">
+          <button type="button" class="btn btn-primary btn-sm" id="btnLogin">登录</button>
+          <button type="button" class="btn btn-sm hidden" id="btnLogout">退出登录</button>
+          <span class="muted small" id="loginState"></span>
+        </div>
+      </section>
+
+      <!-- 添加 / 编辑服务器 -->
+      <section class="panel" id="panelForm">
+        <h3 id="formTitle">添加服务器</h3>
+        <form id="serverForm" autocomplete="off">
+          <input type="hidden" id="fId">
+          <div class="form-grid">
+            <label class="field">
+              <span>显示名称 <i>*</i></span>
+              <input type="text" id="fName" placeholder="例如：BRJS 1服 · 宝可梦整合包" maxlength="60" required>
+            </label>
+            <label class="field">
+              <span>服务器地址（IP 或 域名:端口） <i>*</i></span>
+              <input type="text" id="fAddress" placeholder="play.example.com 或 1.2.3.4:25566" spellcheck="false" required>
+            </label>
+            <label class="field">
+              <span>备注（整合包 / 分组，可留空）</span>
+              <input type="text" id="fNote" placeholder="例如：1.20.1 匠造 · 每周轮换" maxlength="80">
+            </label>
+            <label class="field">
+              <span>排序（数字越小越靠前）</span>
+              <input type="number" id="fSort" value="0" step="1">
+            </label>
+          </div>
+          <div class="row gap gap-top">
+            <button type="submit" class="btn btn-primary btn-sm" id="btnSave">保存</button>
+            <button type="button" class="btn btn-sm" id="btnCancelEdit">取消编辑</button>
+            <span class="muted small" id="formHint"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- 服务器列表 -->
+      <section class="panel">
+        <h3>服务器列表</h3>
+        <div class="admin-list" id="adminList"></div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="panel">
+        <h3>显示设置（仅本机生效）</h3>
+        <div class="form-grid">
+          <label class="field">
+            <span>玩家数据刷新间隔</span>
+            <select id="setPoll">
+              <option value="30">30 秒</option>
+              <option value="60">60 秒</option>
+              <option value="120">120 秒</option>
+              <option value="300">5 分钟</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>服务器列表同步间隔</span>
+            <select id="setListPoll">
+              <option value="15">15 秒</option>
+              <option value="30">30 秒</option>
+              <option value="60">60 秒</option>
+            </select>
+          </label>
+          <label class="field checkbox">
+            <input type="checkbox" id="setCountOffline">
+            <span>服务器离线时也计入「空服时长」</span>
+          </label>
+          <label class="field checkbox">
+            <input type="checkbox" id="setShowPlayers">
+            <span>显示在线玩家名单</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- 数据工具 -->
+      <section class="panel">
+        <h3>数据工具</h3>
+        <div class="row gap">
+          <button type="button" class="btn btn-sm" id="btnExport">导出 JSON 备份</button>
+          <button type="button" class="btn btn-sm" id="btnImport">导入 JSON</button>
+          <input type="file" id="fileImport" accept=".json,application/json" class="hidden">
+          <button type="button" class="btn btn-sm" id="btnResetTimers">重置空服计时</button>
+        </div>
+        <p class="muted small">导出的 JSON 可以直接放进 <code>js/config.js</code> 的 <code>fallbackServers</code> 作为兜底显示。</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/mcstatus.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
