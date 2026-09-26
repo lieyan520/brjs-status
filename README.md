@@ -167,6 +167,27 @@ npx serve .
 **Q：查询失败 / 一直显示「查询失败」？**
 ① 地址写错（必须是 Java 版地址，基岩版端口不一样）；② 服务器开了 `online-mode` 白名单或防压测插件，拒绝第三方 ping；③ 免费接口临时限流，等 1 分钟会自动重试；④ 服务器确实离线。
 
+**Q：怎么确认数据库的定时查询还活着？**
+在 Supabase **SQL Editor** 里跑这几句看一眼就知道：
+
+```sql
+-- 1) 数据是否在被刷新（数据时间应该是 1~2 分钟以内）
+select name, checked_at, zero_since from public.servers_live order by sort_order;
+
+-- 2) 定时任务最近是否成功执行
+select j.jobname, d.status, d.return_message, d.start_time
+  from cron.job_run_details d join cron.job j using (jobid)
+ order by d.start_time desc limit 10;
+```
+
+网页顶部也会显示「数据库更新于 xx 前」，超过 5 分钟会自动出现 ⚠ 提示。
+真停了的话：在 SQL Editor 里重新执行一遍 `supabase/status.sql` 即可（幂等，重复执行安全）。
+
+**Q：定时任务的写法有什么坑？**
+pg_cron 的表达式**不支持秒字段**（`0 * * * * *` 这种 6 段式会被当成别的意思，任务不会按预期执行），
+只支持两种写法：标准 5 段式 `* * * * *`，或者间隔写法 `30 seconds`（**只认 `[1-59] seconds`，不认 `1 minute`**）。
+`status.sql` 里已经按这个规则写好了，不用自己改。
+
 **Q：Supabase 免费项目会被暂停吗？**
 一周完全没有任何请求才会暂停，用网页点一下就能恢复。届时网站会自动显示本地缓存的列表，不会白屏。
 
