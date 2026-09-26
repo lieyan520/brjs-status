@@ -29,24 +29,21 @@
 
 <section class="summary" aria-label="总览">
   <div class="stat">
-    <span class="stat-label">服务器</span>
+    <span class="stat-label">服务器在线</span>
     <span class="stat-value"><b id="statOnline">0</b><i>/</i><span id="statTotal">0</span></span>
-    <span class="stat-hint">在线 / 总数</span>
   </div>
   <div class="stat">
     <span class="stat-label">总在线人数</span>
     <span class="stat-value accent"><b id="statPlayers">0</b></span>
-    <span class="stat-hint" id="statPlayersHint">全部服务器合计</span>
   </div>
   <div class="stat">
     <span class="stat-label">空服中</span>
     <span class="stat-value warn"><b id="statEmpty">0</b></span>
-    <span class="stat-hint">当前 0 人在线</span>
   </div>
   <div class="stat">
     <span class="stat-label">自动刷新</span>
     <span class="stat-value mono"><b id="statCountdown">--</b><i>s</i></span>
-    <span class="stat-hint" id="statUpdated">尚未更新</span>
+    <span class="stat-hint warn hidden" id="statUpdated"></span>
   </div>
 </section>
 
@@ -70,16 +67,6 @@
     <button type="button" class="btn btn-primary" id="emptyAction">+ 添加服务器</button>
   </div>
 </main>
-
-<footer class="footer">
-  <p>
-    <b id="footerTitle">BRJS公益服务器</b> · 玩家数据来自公共 Minecraft 状态接口（mcstatus.io / mcsrvstat.us），有 30~90 秒缓存，仅供参考。
-  </p>
-  <p class="muted">
-    「空服时长」= 该服务器连续 0 人在线的时长，格式为 D:H:M:S（天:时:分:秒），刷新间隔内以本机时间计算。
-    <a href="#" id="footerLink" class="hidden" target="_blank" rel="noopener">GitHub 仓库</a>
-  </p>
-</footer>
 
 <!-- ===================== 管理 / 设置 弹窗 ===================== -->
 <div class="modal hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">

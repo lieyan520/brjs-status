@@ -17,8 +17,6 @@
     banner: 'brjs:banner-closed:v1',
   };
 
-  var PROVIDERS_LABEL = 'mcstatus.io / mcsrvstat.us';
-
   /* ============================ 小工具 ============================ */
   function $(sel) { return document.querySelector(sel); }
   function el(tag, cls, text) {
@@ -44,38 +42,6 @@
     var m = Math.floor((s % 3600) / 60);
     var sec = s % 60;
     return d + ':' + pad2(h) + ':' + pad2(m) + ':' + pad2(sec);
-  }
-  /** 毫秒 -> 中文可读 */
-  function fmtHuman(ms) {
-    var s = Math.max(0, Math.floor(ms / 1000));
-    var d = Math.floor(s / 86400);
-    var h = Math.floor((s % 86400) / 3600);
-    var m = Math.floor((s % 3600) / 60);
-    var sec = s % 60;
-    var out = [];
-    if (d) out.push(d + ' 天');
-    if (h) out.push(h + ' 小时');
-    if (m) out.push(m + ' 分');
-    if (!d && !h) out.push(sec + ' 秒');
-    return out.join(' ');
-  }
-  function fmtClock(ts) {
-    if (!ts) return '—';
-    var d = new Date(ts);
-    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
-  }
-  function relTime(ts, now) {
-    if (!ts) return '尚未更新';
-    var d = (now || Date.now()) - ts;
-    if (d < 0) d = 0;
-    var s = Math.floor(d / 1000);
-    if (s < 5) return '刚刚';
-    if (s < 60) return s + ' 秒前';
-    var m = Math.floor(s / 60);
-    if (m < 60) return m + ' 分钟前';
-    var h = Math.floor(m / 60);
-    if (h < 24) return h + ' 小时' + (m % 60 ? (m % 60) + ' 分' : '') + '前';
-    return Math.floor(h / 24) + ' 天前';
   }
   function copyText(text, label) {
     if (!text) return;
@@ -198,12 +164,6 @@
       $('#siteTitle').textContent = site.title;
     }
     if (site.subtitle) $('#siteSubtitle').textContent = site.subtitle;
-    if (site.footerTitle) $('#footerTitle').textContent = site.footerTitle;
-    if (site.githubUrl) {
-      var a = $('#footerLink');
-      a.href = site.githubUrl;
-      a.classList.remove('hidden');
-    }
   }
 
   /* ============================ 卡片 ============================ */
@@ -222,7 +182,6 @@
       '  <div class="card-icon" data-r="icon">?</div>',
       '  <div class="card-titles">',
       '    <h3 class="card-name"><span class="dot"></span><span data-r="name"></span><span class="badge" data-r="badge"></span></h3>',
-      '    <p class="card-note hidden" data-r="note"></p>',
       '    <div class="addr" data-r="addr" title="点击复制服务器地址"><span data-r="addrtext"></span></div>',
       '  </div>',
       '</div>',
@@ -232,22 +191,20 @@
       '</div>',
       '<div class="bar"><i data-r="bar" style="width:0%"></i></div>',
       '<div class="player-names hidden" data-r="names"></div>',
-      '<div class="zero">',
-      '  <div class="zero-top"><span class="zero-label">0 人在线已持续<span class="tag" data-r="zerotag">等待数据</span></span></div>',
+      '<div class="zero hidden" data-r="zero">',
+      '  <div class="zero-label">0 人在线已持续</div>',
       '  <div class="zero-time" data-r="zerotime">—</div>',
-      '  <div class="zero-sub" data-r="zerosub"></div>',
       '</div>',
-      '<div class="card-foot">',
-      '  <div class="kv" data-r="kv"></div>',
+      '<div class="card-foot hidden" data-r="foot">',
       '  <div class="card-actions" data-r="actions"></div>',
       '</div>',
     ].join('');
     var refs = {};
     Array.prototype.forEach.call(card.querySelectorAll('[data-r]'), function (n) { refs[n.getAttribute('data-r')] = n; });
-    refs.meta.style.whiteSpace = 'pre-line';
     refs.addr.addEventListener('click', function () { copyText(server.address, server.address); });
 
     if (canEdit()) {
+      refs.foot.classList.remove('hidden');
       var bEdit = el('button', 'icon-btn', '编辑');
       bEdit.title = '编辑名称 / IP';
       bEdit.addEventListener('click', function () { openEditor(server.id); });
@@ -267,19 +224,18 @@
     var kind = kindOf(rt);
     var cls = 'card is-' + kind;
     if (rt.loading) cls += ' is-loading';
-    if (rt.error && rt.status) cls += ' has-error';
     c.el.className = cls;
 
     r.name.textContent = server.name;
-    r.note.textContent = server.note || '';
-    r.note.classList.toggle('hidden', !server.note);
-    r.addrtext.textContent = server.address || '未填写地址';
+    r.addrtext.textContent = server.address || '';
     r.addr.title = '点击复制：' + (server.address || '');
 
     var st = rt.status;
     var badgeClass = kind === 'online' || kind === 'empty' ? 'online' : (kind === 'offline' ? 'offline' : (kind === 'error' ? 'error' : ''));
+    var badgeText = KIND_TEXT[kind] || '';
+    if (rt.error && st) { badgeClass = 'error'; badgeText = '查询异常'; }   // 显示的是上一次的数据
     r.badge.className = 'badge' + (badgeClass ? ' ' + badgeClass : '');
-    r.badge.textContent = KIND_TEXT[kind] || '';
+    r.badge.textContent = badgeText;
 
     // 图标
     if (st && st.icon) {
@@ -303,17 +259,12 @@
       r.bar.style.width = '0%';
     }
 
-    // 右侧信息
-    var lines = [];
+    // 右侧信息：只留版本号
     if (st) {
-      lines.push(st.version ? ('版本 ' + st.version) : (st.online ? '版本未知' : '未响应查询'));
-      lines.push((st.provider || '') + (rt.latency ? (' · ' + rt.latency + 'ms') : (st.shared ? ' · 数据库统计' : '')));
-      if (st.motd && st.motd !== '-') lines.push(truncate(st.motd, 46));
+      r.meta.textContent = st.version ? ('版本 ' + st.version) : '';
     } else {
-      lines.push(rt.error ? '查询失败' : '正在查询…');
-      lines.push(rt.error ? truncate(rt.error, 46) : PROVIDERS_LABEL);
+      r.meta.textContent = '';
     }
-    r.meta.textContent = lines.join('\n');
 
     // 玩家名单
     var names = st && st.online && st.playerNames ? st.playerNames : [];
@@ -334,54 +285,15 @@
     var c = state.cards.get(server.id);
     if (!c) return;
     var r = c.refs;
-    var rt = getRt(server.id);
+    var kind = kindOf(getRt(server.id));
     var t = trackingOf(server);
-    var kind = kindOf(rt);
-    // 离线 + 关闭「离线计入」时，即使计时器还在跑也不显示（并把它结算掉）
+    // 离线 + 关闭「离线计入」时，即使数据库还在计时，本机也不显示
     var offlineNotCounted = (kind === 'offline') && !state.settings.countOffline;
     var counting = t.zeroSince != null && !offlineNotCounted;
 
-    if (counting) {
-      r.zerotime.textContent = fmtDHMS(now - t.zeroSince);
-      r.zerotag.textContent = kind === 'offline' ? '离线 · 计入中' : '空服计时中';
-    } else {
-      r.zerotime.textContent = '—';
-      r.zerotag.textContent = kind === 'offline' ? '离线 · 未计入'
-        : kind === 'online' ? '有人在线'
-          : kind === 'error' ? '暂无数据' : '等待数据';
-    }
-
-    var subs = [];
-    if (counting) {
-      subs.push('开始于 ' + fmtClock(t.zeroSince));
-      subs.push('≈ ' + fmtHuman(now - t.zeroSince));
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
-    } else if (kind === 'online') {
-      subs.push('当前 ' + (rt.status ? rt.status.playersOnline : 0) + ' 人在线');
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
-      if (t.lastZeroMs) subs.push('上次空服 ' + fmtDHMS(t.lastZeroMs));
-    } else if (kind === 'offline') {
-      subs.push('服务器当前离线');
-      if (t.lastPlayersAt) subs.push('上次有人 ' + relTime(t.lastPlayersAt, now));
-    } else if (kind === 'error') {
-      subs.push(rt.error ? truncate(rt.error, 60) : '查询失败，稍后自动重试');
-    } else {
-      subs.push(sharedMode() ? '等待数据库首次查询…' : '首次查询中…');
-    }
-    var longest = Math.max(t.longestMs || 0, counting ? now - t.zeroSince : 0);
-    if (longest > 0) subs.push('最长空服记录 ' + fmtDHMS(longest));
-    if (sharedMode()) subs.push('全站统一计时');
-    r.zerosub.textContent = subs.join(' · ');
-
-    var kv = ['最近更新 ' + relTime(rt.fetchedAt, now)];
-    if (rt.error && rt.status) kv.push('⚠ 本次查询失败，显示上次数据');
-    if (server.note) kv.push(server.note);
-    r.kv.textContent = kv.join(' · ');
-  }
-
-  function truncate(s, n) {
-    s = String(s || '');
-    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+    // 只有真的「0 人在线」时才显示这一块，界面保持干净
+    r.zero.classList.toggle('hidden', !counting);
+    if (counting) r.zerotime.textContent = fmtDHMS(now - t.zeroSince);
   }
 
   function renderGrid() {
@@ -439,27 +351,32 @@
     $('#statTotal').textContent = String(list.length);
     $('#statPlayers').textContent = String(players);
     $('#statEmpty').textContent = String(empty);
-    $('#statPlayersHint').textContent = failed ? (failed + ' 个服务器查询失败') : '全部服务器合计';
-    $('#statUpdated').textContent = updatedHint(nowMs());
+    updateFreshness(nowMs());
   }
 
   function updateDbPill() {
     var pill = $('#dbPill');
     var mode = Store.mode();
     var user = Store.currentUser();
+    var text = '', cls = '', title = '';
     if (mode === 'local') {
-      pill.className = 'pill warn';
-      pill.textContent = '本地模式';
-      pill.title = '尚未接入 Supabase 数据库：服务器列表只保存在你自己的浏览器里';
+      // 没接数据库时，这是必须让站长看到的提示
+      cls = 'pill warn'; text = '本地模式';
+      title = '尚未接入 Supabase 数据库：服务器列表只保存在你自己的浏览器里';
     } else if (state.dbError) {
-      pill.className = 'pill err';
-      pill.textContent = state.dbStale ? '云端异常（显示缓存）' : '云端异常';
-      pill.title = state.dbError;
-    } else {
-      pill.className = 'pill ok';
-      pill.textContent = user ? ('云端已连接 · ' + (user.email || '已登录')) : '云端已连接';
-      pill.title = '服务器列表来自 Supabase 数据库';
+      cls = 'pill err';
+      text = state.dbStale ? '连接异常（显示缓存）' : '连接异常';
+      title = state.dbError;
+    } else if (user) {
+      // 管理员登录后显示登录状态，方便确认
+      cls = 'pill ok'; text = '已登录 ' + (user.email || ''); title = '服务器数据来自 Supabase 数据库';
     }
+    // 一切正常且不是管理员时：不显示任何状态标签，界面更干净
+    pill.className = cls ? cls : 'pill hidden';
+    pill.textContent = text;
+    pill.title = title;
+    pill.classList.toggle('hidden', !text);
+
     var banner = $('#setupBanner');
     var dismissed = loadJson(KEYS.banner, false);
     banner.classList.toggle('hidden', mode !== 'local' || !!dismissed);
@@ -649,20 +566,25 @@
     }
     var nextAt = sharedMode() ? state.nextListAt : state.nextStatusAt;
     $('#statCountdown').textContent = String(Math.max(0, Math.ceil((nextAt - wall) / 1000)));
-    $('#statUpdated').textContent = updatedHint(shown);
+    updateFreshness(shown);
     state.servers.forEach(function (s) { paintTimer(s, shown); });
   }
 
-  /** 顶部「自动刷新 / 数据库更新于」文案 */
-  function updatedHint(shown) {
+  /** 平时不显示任何文字；只有数据确实卡住超过 5 分钟才提示一句 */
+  function updateFreshness(shown) {
+    var box = $('#statUpdated');
+    if (!box) return;
+    var msg = '';
     if (sharedMode()) {
       var newest = 0;
       visibleServers().forEach(function (s) { if (s.checkedAt && s.checkedAt > newest) newest = s.checkedAt; });
-      if (!newest) return '等待数据库首次查询';
-      var lag = shown - newest;
-      return '数据库更新于 ' + relTime(newest, shown) + (lag > 300000 ? ' · ⚠ 自动查询可能已停止' : '');
+      if (newest) {
+        var lag = shown - newest;
+        if (lag > 300000) msg = '⚠ 数据已 ' + Math.floor(lag / 60000) + ' 分钟未更新';
+      }
     }
-    return state.lastUpdatedAt ? ('更新于 ' + relTime(state.lastUpdatedAt)) : '尚未更新';
+    box.textContent = msg;
+    box.classList.toggle('hidden', !msg);
   }
 
   /* ============================ 管理端 ============================ */

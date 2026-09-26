@@ -139,6 +139,7 @@ code{font-family:var(--mono);background:var(--panel-2);padding:1px 5px;border-ra
 .stat-value.accent b{color:var(--green-bright)}
 .stat-value.warn b{color:var(--amber)}
 .stat-hint{font-size:11.5px;color:var(--text-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-hint.warn{color:var(--amber)}
 
 /* ============================ 提示条 ============================ */
 .banner{
@@ -192,7 +193,6 @@ main{max-width:1560px;margin:0 auto;padding:18px 22px 30px}
 .card.is-online .card-name .dot{background:var(--green-bright);box-shadow:0 0 8px var(--green-bright)}
 .card.is-empty .card-name .dot{background:var(--amber);box-shadow:0 0 8px var(--amber)}
 .card.is-offline .card-name .dot{background:var(--red)}
-.card-note{font-size:12px;color:var(--text-mute);margin:2px 0 0}
 .addr{
   display:inline-flex;align-items:center;gap:6px;margin-top:4px;
   font-family:var(--mono);font-size:12.5px;color:var(--text-dim);
@@ -232,34 +232,23 @@ main{max-width:1560px;margin:0 auto;padding:18px 22px 30px}
 /* 空服计时区 */
 .zero{
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);
-  background:var(--panel-2);padding:10px 12px;
-  display:flex;flex-direction:column;gap:4px;
+  background:var(--panel-2);padding:11px 13px;
+  display:flex;flex-direction:column;gap:5px;
 }
-.zero-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.zero-label{font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
-.zero-label .tag{
-  font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;
-  background:var(--panel);border:1px solid var(--line);color:var(--text-mute);
-}
+.zero-label{font-size:12.5px;color:var(--text-dim)}
 .card.is-empty .zero{border-color:rgba(227,179,65,.4);background:rgba(227,179,65,.07)}
-.card.is-empty .zero-label .tag{background:var(--amber);border-color:var(--amber);color:#3b2a00}
 .zero-time{
   font-family:var(--mono);font-size:27px;font-weight:700;letter-spacing:1px;line-height:1.15;
   color:var(--text);font-variant-numeric:tabular-nums;
 }
 .card.is-empty .zero-time{color:var(--amber)}
 .card.is-offline .zero-time{color:#b9a06a}
-.zero-sub{font-size:11.5px;color:var(--text-mute);display:flex;flex-wrap:wrap;gap:10px}
 
-/* 卡脚 */
+/* 卡脚（只有管理员登录后才出现：编辑 / 删除） */
 .card-foot{
-  display:flex;align-items:center;justify-content:space-between;gap:8px;
-  border-top:1px solid var(--line-soft);padding-top:9px;
-  font-size:11.5px;color:var(--text-mute);flex-wrap:wrap;
+  display:flex;align-items:center;gap:8px;
+  border-top:1px solid var(--line-soft);padding-top:9px;flex-wrap:wrap;
 }
-.card-foot .kv{display:flex;gap:9px;flex-wrap:wrap}
-.card-foot .kv b{color:var(--text-dim);font-weight:600}
-.card.has-error .card-foot .kv{color:var(--amber)}
 .card-actions{display:flex;gap:6px;margin-left:auto}
 .card-actions .icon-btn{font-size:12px;padding:4px 9px;border:1px solid var(--line-soft)}
 .card-actions .icon-btn:hover{border-color:var(--line)}
@@ -277,14 +266,6 @@ main{max-width:1560px;margin:0 auto;padding:18px 22px 30px}
 .empty-block::after{content:"";position:absolute;inset:18px;border-radius:4px;background:var(--bg);box-shadow:inset 0 0 0 4px var(--green-bright)}
 .empty h2{margin:0 0 8px;font-size:20px}
 .empty p{margin:0 0 20px;color:var(--text-dim);font-size:14px}
-
-/* ============================ 页脚 ============================ */
-.footer{
-  border-top:1px solid var(--line-soft);
-  padding:18px 22px 34px;text-align:center;font-size:12.5px;color:var(--text-dim);
-  max-width:1560px;margin:0 auto;
-}
-.footer p{margin:4px 0}
 
 /* ============================ 弹窗 ============================ */
 .modal{
