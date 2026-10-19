@@ -358,6 +358,7 @@ revoke all on function public.apply_status_error(uuid, text, text)            fr
 revoke all on function public.fire_poll(uuid, text, text)                     from public, anon, authenticated;
 revoke all on function public.poll_servers()                                  from public, anon, authenticated;
 revoke all on function public.collect_responses()                             from public, anon, authenticated;
+revoke all on function public.poll_tick()                                     from public, anon, authenticated;
 revoke all on function public.on_server_changed()                             from public, anon, authenticated;
 revoke all on function public.poll_now()                                      from public, anon;
 grant execute on function public.poll_now() to authenticated;
@@ -365,16 +366,43 @@ revoke all on function public.reset_zero(uuid)                                fr
 grant execute on function public.reset_zero(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 11. 定时任务
+-- 11. 流水线：一次调用 = 先收上一批回执，再发下一批查询
+--
+--     老做法是「每分钟发一次查询 + 每 30 秒收一次结果」，两条流水线互相等，
+--     数据最长要 60 秒才落库一次 —— 访客看到的人数因此总是慢半分钟到一分钟。
+--
+--     改成流水线之后：每次 tick 先把上一轮（约 15 秒前发出、早就回来的）结果收掉，
+--     再立刻发下一轮。数据在库里最多只隔一个 tick，而不是一分钟。
+-- ---------------------------------------------------------------------------
+create or replace function public.poll_tick()
+returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer := 0;
+begin
+  -- 1) 收：上一轮请求的回执（pg_net 是异步的，1~2 秒内就已经回来了）
+  perform public.collect_responses();
+  -- 2) 发：这一轮的新查询
+  n := public.poll_servers();
+  -- 3) 清：pg_net 的历史回执不删会一直堆积，只留最近 2 分钟
+  delete from net._http_response where created < now() - interval '2 minutes';
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 12. 定时任务
 --     注意：pg_cron 的 cron 表达式【不支持秒字段】，只支持两种写法：
 --       · 标准 5 段式：'* * * * *'（每分钟）
---       · 间隔写法：'30 seconds'（pg_cron 1.5+ 支持 1-59 秒）
---     所以：查询每分钟一次；收结果每 30 秒一次（错开，尽快把结果落库）。
+--       · 间隔写法：'15 seconds'（pg_cron 1.5+ 支持 1-59 秒）
+--
+--     为什么是 15 秒：mcstatus.io 自己的 CDN 缓存就是 15 秒左右
+--     （响应头 Cache-Control: max-age=13），查得比这更勤也拿不到更新的数据，
+--     只会白耗请求数。15 秒正好贴着它的缓存周期。
 -- ---------------------------------------------------------------------------
 do $$
 declare j record;
 begin
-  for j in select jobid from cron.job where jobname in ('brjs-poll', 'brjs-collect') loop
+  for j in select jobid from cron.job
+            where jobname in ('brjs-poll', 'brjs-collect', 'brjs-tick') loop
     perform cron.unschedule(j.jobid);
   end loop;
 exception when others then null;
@@ -382,17 +410,16 @@ end $$;
 
 do $$
 begin
-  -- 查询：标准 5 段式，每分钟一次（最稳，所有 pg_cron 版本都支持）
-  perform cron.schedule('brjs-poll', '* * * * *', $job$select public.poll_servers();$job$);
-  -- 收结果：优先用间隔写法错峰到每 30 秒（pg_cron 只认 '[1-59] seconds'，不认 '1 minute'）
   begin
-    perform cron.schedule('brjs-collect', '30 seconds', $job$select public.collect_responses();$job$);
+    -- 首选：15 秒一次（pg_cron 只认 '[1-59] seconds'，不认 '1 minute'）
+    perform cron.schedule('brjs-tick', '15 seconds', $job$select public.poll_tick();$job$);
   exception when others then
-    perform cron.schedule('brjs-collect', '* * * * *', $job$select public.collect_responses();$job$);
+    -- 老版本 pg_cron 不支持秒级间隔：退回每分钟（还是比原来的双流水线快）
+    perform cron.schedule('brjs-tick', '* * * * *', $job$select public.poll_tick();$job$);
   end;
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 12. 立刻跑一次，确认能用（不需要等定时任务）
+-- 13. 立刻跑一次，确认能用（不需要等定时任务）
 -- ---------------------------------------------------------------------------
-select public.poll_servers() as 已发起查询数;
+select public.poll_tick() as 已发起查询数;

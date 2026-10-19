@@ -10,6 +10,7 @@ window.BRJS_CONFIG = {
     subtitle: 'Java 版服务器实时在线人数监控',
     footerTitle: 'BRJS公益服务器',
     githubUrl: 'https://github.com/lieyan520/brjs-status',   // 页脚显示的仓库链接，留空则不显示
+    showFreshness: true,   // 是否显示「数据 Xs 前」的新鲜度提示（改成 false 可完全隐藏）
   },
 
   /* ---------------- 2. Supabase 云数据库 ----------------
@@ -24,8 +25,8 @@ window.BRJS_CONFIG = {
 
   /* ---------------- 3. 刷新设置 ---------------- */
   poll: {
-    statusSeconds: 60,    // 玩家人数刷新间隔（秒）。公共接口有限流，建议不要低于 30
-    listSeconds: 15,      // 服务器列表同步间隔（秒）：你在后台改了 IP，多久对所有访客生效
+    statusSeconds: 60,    // 仅「本地模式」用：浏览器自己查服的间隔（秒）
+    listSeconds: 8,       // 云端模式读数据库的间隔（秒）。只读一次小接口，8 秒很轻
     timeoutMs: 10000,     // 单次查询超时（毫秒）
   },
 
@@ -40,7 +41,8 @@ window.BRJS_CONFIG = {
    * 格式：{ name: '显示名称', address: 'IP 或 域名:端口', note: '备注' }
    */
   fallbackServers: [
-    { name: 'BRJS 1服', address: 't36.sjcmc.cn:14421', note: '1服 · 整合包轮换' },
-    { name: 'BRJS 2服', address: 't36.sjcmc.cn:14484', note: '2服 · 1.20.1' },
+    { name: '农场物语', address: 'w41.kkwmc.cn:1359', note: '1服 · 整合包轮换' },
+    { name: 'RLCraft', address: 'w41.kkwmc.cn:1360', note: '2服 · 1.20.1' },
+    { name: '末日余晖', address: 'w41.kkwmc.cn:1361', note: '3服' },
   ],
 };

@@ -94,7 +94,7 @@
         <ol class="steps">
           <li>打开 <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a> 注册并新建项目（免费版即可）。</li>
           <li>左侧 <b>SQL Editor</b> → 新建查询 → 粘贴 <b>建表 SQL</b> 并点 <b>Run</b>。</li>
-          <li>再新建一个查询 → 粘贴 <b>共享状态 SQL</b> 并点 <b>Run</b>（让数据库每分钟自己去查人数，全站所有人看到同一个空服时长）。</li>
+          <li>再新建一个查询 → 粘贴 <b>共享状态 SQL</b> 并点 <b>Run</b>（让数据库每 15 秒自己去查人数，全站所有人看到同一个空服时长）。</li>
           <li>左侧 <b>Project Settings → API</b> 复制 <b>Project URL</b> 与 <b>anon public key</b>，填到下面的输入框（或写进仓库的 <code>js/config.js</code>，这样所有访客都能连上）。</li>
         </ol>
         <div class="row gap">
@@ -196,6 +196,8 @@
           <label class="field">
             <span>页面读取数据的间隔</span>
             <select id="setListPoll">
+              <option value="5">5 秒</option>
+              <option value="8">8 秒</option>
               <option value="15">15 秒</option>
               <option value="30">30 秒</option>
               <option value="60">60 秒</option>

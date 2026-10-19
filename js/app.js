@@ -102,7 +102,7 @@
   };
   var poll = CFG.poll || {};
   state.settings.statusSeconds = clampNum(state.settings.statusSeconds, 15, 3600, 60);
-  state.settings.listSeconds = clampNum(state.settings.listSeconds, 10, 3600, 15);
+  state.settings.listSeconds = clampNum(state.settings.listSeconds, 5, 3600, 8);
   function clampNum(v, min, max, def) {
     var n = parseInt(v, 10);
     if (!isFinite(n)) n = def;
@@ -572,21 +572,36 @@
     state.servers.forEach(function (s) { paintTimer(s, shown); });
   }
 
-  /** 平时不显示任何文字；只有数据确实卡住超过 5 分钟才提示一句 */
+  /** 新鲜度提示：正常情况下显示「更新于 Xs 前」，卡住超过 2 分钟变黄，超过 5 分钟告警 */
   function updateFreshness(shown) {
     var box = $('#statUpdated');
     if (!box) return;
     var msg = '';
+    var warn = false;
     if (sharedMode()) {
       var newest = 0;
       visibleServers().forEach(function (s) { if (s.checkedAt && s.checkedAt > newest) newest = s.checkedAt; });
       if (newest) {
-        var lag = shown - newest;
-        if (lag > 300000) msg = '⚠ 数据已 ' + Math.floor(lag / 60000) + ' 分钟未更新';
+        var lag = Math.max(0, shown - newest);
+        if (lag > 300000) {
+          msg = '⚠ 数据已 ' + Math.floor(lag / 60000) + ' 分钟未更新';
+          warn = true;
+        } else if (showFreshness()) {
+          if (lag < 1500) msg = '刚刚更新';
+          else if (lag < 60000) msg = '更新于 ' + Math.round(lag / 1000) + ' 秒前';
+          else msg = '更新于 ' + Math.floor(lag / 60000) + ' 分钟前';
+          warn = lag > 120000;
+        }
       }
     }
     box.textContent = msg;
+    box.classList.toggle('warn', warn);
     box.classList.toggle('hidden', !msg);
+  }
+
+  function showFreshness() {
+    var s = CFG.site || {};
+    return s.showFreshness !== false;
   }
 
   /* ============================ 管理端 ============================ */
@@ -618,7 +633,7 @@
         $('#dbDesc').textContent = '云端读取异常：' + state.dbError;
       } else if (state.sharedStatus) {
         $('#dbDesc').textContent = '已连接：' + cfg.url + '（数据表 ' + cfg.table + '）· 在线人数和空服时长由数据库统一统计，'
-          + '每分钟自动查询一次，所有访客看到的是同一个数字（没人在看网页时也在继续统计）。';
+          + '每 15 秒自动查询一次，所有访客看到的是同一个数字（没人在看网页时也在继续统计）。';
       } else {
         $('#dbDesc').textContent = '已连接：' + cfg.url + '（数据表 ' + cfg.table + '）· 但还没执行 supabase/status.sql，'
           + '目前是「每个访客各自查询」，不同人看到的空服时长可能不一样。执行后即可全站统一。';
