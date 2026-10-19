@@ -244,7 +244,8 @@
       r.icon.textContent = '';
     } else {
       r.icon.style.backgroundImage = '';
-      r.icon.textContent = kind === 'offline' ? '☠' : (kind === 'error' ? '?' : '⛏');
+      // 没有图标时显示服务器名首字（像素风字母块），比 emoji 更统一
+      r.icon.textContent = (server.name || '?').slice(0, 1).toUpperCase();
     }
 
     // 人数
