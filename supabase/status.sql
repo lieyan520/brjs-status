@@ -358,7 +358,6 @@ revoke all on function public.apply_status_error(uuid, text, text)            fr
 revoke all on function public.fire_poll(uuid, text, text)                     from public, anon, authenticated;
 revoke all on function public.poll_servers()                                  from public, anon, authenticated;
 revoke all on function public.collect_responses()                             from public, anon, authenticated;
-revoke all on function public.poll_tick()                                     from public, anon, authenticated;
 revoke all on function public.on_server_changed()                             from public, anon, authenticated;
 revoke all on function public.poll_now()                                      from public, anon;
 grant execute on function public.poll_now() to authenticated;
@@ -387,6 +386,9 @@ begin
   delete from net._http_response where created < now() - interval '2 minutes';
   return n;
 end $$;
+
+-- 只允许定时任务（函数所有者）调用，公开密钥拿不到
+revoke all on function public.poll_tick() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 12. 定时任务
